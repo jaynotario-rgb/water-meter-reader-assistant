@@ -30,6 +30,9 @@ export interface ReadingRecord {
   status: ReadingStatus;
   paymentStatus: PaymentStatus;
   paidAt?: string;
+  paymentMethod?: string;
+  paymentReference?: string;
+  paymentRemarks?: string;
   capturedAt: string;
   meterPhoto?: Blob;
   notes?: string;
