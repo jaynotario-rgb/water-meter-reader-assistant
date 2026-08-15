@@ -1,5 +1,7 @@
 import type { ReadingStatus } from './billing';
 
+export type PaymentStatus = 'UNPAID' | 'PAID';
+
 export interface Customer {
   id: string;
   name: string;
@@ -26,6 +28,8 @@ export interface ReadingRecord {
   total: number;
 
   status: ReadingStatus;
+  paymentStatus: PaymentStatus;
+  paidAt?: string;
   capturedAt: string;
   meterPhoto?: Blob;
   notes?: string;
