@@ -87,9 +87,10 @@ export function App() {
     if (!meter) return;
     const customer = await db.customers.where('meterNumber').equals(meter).first();
     if (!customer) return;
-    const latest = await db.records.where('customerId').equals(customer.id).reverse().sortBy('capturedAt');
+    const customerRecords = await db.records.where('customerId').equals(customer.id).toArray();
+    const latest = customerRecords.sort((a, b) => b.capturedAt.localeCompare(a.capturedAt))[0];
     setCustomerName(customer.name);
-    if (latest[0]) setPreviousReading(String(latest[0].currentReading));
+    if (latest) setPreviousReading(String(latest.currentReading));
     setMessage(`Existing meter found. Latest reading loaded for ${customer.name}.`);
   }
 
