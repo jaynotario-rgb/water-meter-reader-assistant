@@ -1,6 +1,20 @@
 import type { ReadingStatus } from './billing';
 
 export type PaymentStatus = 'UNPAID' | 'PAID';
+export type RecordState = 'ACTIVE' | 'VOID';
+
+export interface RecordRevision {
+  editedAt: string;
+  reason: string;
+  previousReading: number;
+  currentReading: number;
+  consumption: number;
+  excessConsumption: number;
+  minimumCharge: number;
+  excessCharge: number;
+  total: number;
+  status: ReadingStatus;
+}
 
 export interface Customer {
   id: string;
@@ -33,6 +47,14 @@ export interface ReadingRecord {
   paymentMethod?: string;
   paymentReference?: string;
   paymentRemarks?: string;
+
+  recordState?: RecordState;
+  editedAt?: string;
+  editReason?: string;
+  revisions?: RecordRevision[];
+  voidedAt?: string;
+  voidReason?: string;
+
   capturedAt: string;
   meterPhoto?: Blob;
   notes?: string;
