@@ -14,6 +14,16 @@ export class WaterMeterDatabase extends Dexie {
       records: 'id, customerId, meterNumber, capturedAt, status',
       settings: 'key',
     });
+
+    this.version(2).stores({
+      customers: 'id, name, &meterNumber, updatedAt',
+      records: 'id, customerId, meterNumber, capturedAt, status, paymentStatus',
+      settings: 'key',
+    }).upgrade(async (tx) => {
+      await tx.table('records').toCollection().modify((record) => {
+        if (!record.paymentStatus) record.paymentStatus = 'UNPAID';
+      });
+    });
   }
 }
 
