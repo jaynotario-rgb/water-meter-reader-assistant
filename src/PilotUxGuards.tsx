@@ -88,14 +88,14 @@ export function PilotUxGuards() {
         try {
           const file = await receiptFile();
           const shareTitle = 'Water Meter Receipt';
-          const shareText = `Water Meter Reader receipt\n${window.location.href}`;
+          const shareText = 'Water Meter Reader receipt attached.';
 
           if (navigator.share) {
             if (!navigator.canShare || navigator.canShare({ files: [file] })) {
               await navigator.share({ title: shareTitle, text: shareText, files: [file] });
               return;
             }
-            await navigator.share({ title: shareTitle, text: shareText, url: window.location.href });
+            await navigator.share({ title: shareTitle, text: shareText });
             return;
           }
 
@@ -159,7 +159,7 @@ export function PilotUxGuards() {
           if (shareButton.disabled) shareButton.disabled = false;
           const desiredText = inAppBrowser && !navigator.share ? 'OPEN IN CHROME TO SHARE' : 'SHARE RECEIPT';
           const desiredTitle = inAppBrowser && !navigator.share
-            ? 'Messenger in-app browser blocks the native share sheet. Open the same receipt in Chrome to share it.'
+            ? 'Open the same receipt in Chrome to use the phone share sheet.'
             : 'Share using the phone share sheet.';
           setTextIfChanged(shareButton, desiredText);
           if (shareButton.title !== desiredTitle) shareButton.title = desiredTitle;
