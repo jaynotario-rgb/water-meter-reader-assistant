@@ -1,0 +1,56 @@
+.record-void {
+  opacity: .72;
+  background: #f8fafc;
+  border-style: dashed;
+}
+.status-void,
+.audit-void {
+  color: #991b1b !important;
+  font-weight: 900;
+}
+.audit-edited {
+  color: #7c3aed !important;
+  font-weight: 900;
+}
+.audit-reason {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+}
+.record-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.record-actions .danger-button {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #991b1b;
+}
+.audit-panel,
+.void-panel {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+.audit-panel {
+  background: #f5f3ff;
+  color: #5b21b6;
+}
+.void-panel {
+  background: #fff1f2;
+  color: #991b1b;
+}
+.audit-panel small {
+  opacity: .8;
+}
+.receipt-status.void {
+  color: #991b1b;
+}
+@media (max-width: 360px) {
+  .record-actions { grid-template-columns: 1fr; }
+}
