@@ -5,6 +5,7 @@ import { registerSW } from 'virtual:pwa-register';
 import { App } from './App';
 import { FieldIdentity } from './FieldIdentity';
 import { PilotControls } from './PilotControls';
+import { PilotUxGuards } from './PilotUxGuards';
 import './styles.css';
 import './enhancements.css';
 import './audit.css';
@@ -17,5 +18,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <App />
     <FieldIdentity />
     <PilotControls />
+    <PilotUxGuards />
   </React.StrictMode>,
 );
