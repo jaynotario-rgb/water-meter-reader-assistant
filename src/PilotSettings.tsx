@@ -115,7 +115,11 @@ export function PilotSettings({ open, onClose }: PilotSettingsProps) {
           </label>
           <label className="restore-file">
             CHOOSE BACKUP FILE
-            <input type="file" accept="application/json,.json" onChange={(e) => void handleRestore(e.target.files?.[0])} />
+            <input type="file" accept="application/json,.json" onChange={(e) => {
+              const file = e.target.files?.[0];
+              void handleRestore(file);
+              e.currentTarget.value = '';
+            }} />
           </label>
         </section>
 
