@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { toBlob } from 'html-to-image';
+import { createId } from './compat';
 import { db } from './data/db';
 import { calculateBilling } from './domain/billing';
 import type { Customer, ReadingRecord, RecordRevision } from './domain/models';
@@ -124,7 +125,7 @@ export function App() {
       const now = new Date().toISOString();
       const cleanMeter = meterNumber.trim();
       const existing = await db.customers.where('meterNumber').equals(cleanMeter).first();
-      const customerId = existing?.id ?? crypto.randomUUID();
+      const customerId = existing?.id ?? createId();
       const duplicates = (await db.records.where('meterNumber').equals(cleanMeter).toArray()).filter(isActive);
       const alreadyToday = duplicates.find((r) => sameLocalDate(r.capturedAt, new Date().toLocaleDateString('en-CA')));
       if (alreadyToday && !window.confirm('May existing active reading na ang meter na ito today. Save another reading anyway?')) {
@@ -141,7 +142,7 @@ export function App() {
         updatedAt: now,
       };
       const record: ReadingRecord = {
-        id: crypto.randomUUID(), customerId,
+        id: createId(), customerId,
         customerName: customer.name, meterNumber: cleanMeter,
         previousReading: result.previousReading, currentReading: result.currentReading,
         consumption: result.consumption, excessConsumption: result.excessConsumption,
@@ -163,7 +164,8 @@ export function App() {
       setPhoto(undefined);
     } catch (error) {
       console.error(error);
-      setMessage('Could not save the reading. No record was intentionally changed.');
+      const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      setMessage(`Could not save the reading. ${detail}`);
     } finally { setSaving(false); }
   }
 
@@ -271,23 +273,25 @@ export function App() {
   const customerFolders = useMemo(() => {
     const map = new Map<string, ReadingRecord[]>();
     for (const record of records) map.set(record.customerId, [...(map.get(record.customerId) ?? []), record]);
-    return Array.from(map.entries()).map(([customerId, customerRecords]) => {
-      const active = customerRecords.filter(isActive);
-      return {
+    return Array.from(map.entries()).flatMap(([customerId, customerRecords]) => {
+      const scoped = customerRecords.filter((record) => matchesHistoryStatus(record, historyStatus));
+      if (scoped.length === 0) return [];
+      const active = scoped.filter(isActive);
+      return [{
         customerId,
         customerRecords,
-        latest: active[0] ?? customerRecords[0],
+        latest: scoped[0],
         count: active.length,
-        voided: customerRecords.length - active.length,
+        voided: scoped.filter((record) => !isActive(record)).length,
         unpaid: active.filter((r) => (r.paymentStatus ?? 'UNPAID') === 'UNPAID').length,
-      };
+        matching: scoped.length,
+      }];
     });
-  }, [records]);
+  }, [records, historyStatus]);
 
-  const filteredFolders = customerFolders.filter(({ latest, customerRecords }) => {
+  const filteredFolders = customerFolders.filter(({ latest }) => {
     const q = search.trim().toLowerCase();
-    const matchesSearch = !q || latest.customerName.toLowerCase().includes(q) || latest.meterNumber.toLowerCase().includes(q);
-    return matchesSearch && customerRecords.some((record) => matchesHistoryStatus(record, historyStatus));
+    return !q || latest.customerName.toLowerCase().includes(q) || latest.meterNumber.toLowerCase().includes(q);
   });
 
   const today = new Date().toLocaleDateString('en-CA');
@@ -361,7 +365,7 @@ export function App() {
     {screen === 'history' && <section className="screen-card"><div className="section-heading"><div><p className="eyebrow">CUSTOMER RECORDS</p><h2>History</h2></div><strong>{filteredFolders.length}</strong></div>
       <div className="history-tools"><input className="search-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search customer or meter number" /><select className="history-status-select" aria-label="History status" value={historyStatus} onChange={(e) => setHistoryStatus(e.target.value as HistoryStatusFilter)}><option value="all">All Records</option><option value="pending">Pending</option><option value="paid">Paid</option><option value="void">Void</option></select></div>
       <p className="history-filter-note">Status filter stays active when you open a customer folder.</p>
-      {filteredFolders.length === 0 ? <p className="empty-state">No matching customer records.</p> : <div className="folder-list">{filteredFolders.map(({ customerId, latest, count, voided, unpaid }) => <button className="folder-row" key={customerId} type="button" onClick={() => openFolder(customerId)}><div><strong>{latest.customerName}</strong><span className="meter-emphasis">{latest.meterNumber}</span><span>Latest: {new Date(latest.capturedAt).toLocaleDateString()}</span></div><div className="folder-meta"><strong>{count} active reading{count === 1 ? '' : 's'}</strong><span>{unpaid ? `${unpaid} pending` : 'All active marked paid'}</span>{voided > 0 && <span>{voided} voided</span>}</div></button>)}</div>}
+      {filteredFolders.length === 0 ? <p className="empty-state">No matching customer records.</p> : <div className="folder-list">{filteredFolders.map(({ customerId, latest, count, voided, unpaid, matching }) => <button className="folder-row" key={customerId} type="button" onClick={() => openFolder(customerId)}><div><strong>{latest.customerName}</strong><span className="meter-emphasis">{latest.meterNumber}</span><span>Latest match: {new Date(latest.capturedAt).toLocaleDateString()}</span></div><div className="folder-meta">{historyStatus === 'all' ? <><strong>{count} active reading{count === 1 ? '' : 's'}</strong><span>{unpaid ? `${unpaid} pending` : 'All active marked paid'}</span>{voided > 0 && <span>{voided} voided</span>}</> : <><strong>{matching} {historyStatus.toUpperCase()} match{matching === 1 ? '' : 'es'}</strong></>}</div></button>)}</div>}
     </section>}
 
     {screen === 'folder' && <section className="screen-card"><button className="back-button" type="button" onClick={() => setScreen('history')}>← BACK TO HISTORY</button><div className="section-heading"><div><p className="eyebrow">CUSTOMER FOLDER</p><h2>{folderCustomer?.customerName ?? 'Customer'}</h2><span className="meter-emphasis">{folderCustomer?.meterNumber}</span><span>History status: {historyStatus === 'all' ? 'All Records' : historyStatus.toUpperCase()}</span></div><strong>{filteredFolderRecords.length}</strong></div>
