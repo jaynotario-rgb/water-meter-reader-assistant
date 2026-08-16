@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { FIELD_IDENTITY_UPDATED } from './FieldIdentity';
 import { exportBackup, getSetting, PILOT_VERSION, restoreBackup, setSetting } from './pilot-data';
 
 interface PilotSettingsProps {
@@ -27,7 +28,8 @@ export function PilotSettings({ open, onClose }: PilotSettingsProps) {
   async function saveIdentity() {
     await setSetting('readerName', readerName.trim());
     await setSetting('waterSystemName', waterSystemName.trim());
-    setMessage('Settings saved on this device.');
+    window.dispatchEvent(new CustomEvent(FIELD_IDENTITY_UPDATED));
+    setMessage('Settings saved and applied to this device.');
   }
 
   async function handleBackup() {
