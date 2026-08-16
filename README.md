@@ -65,3 +65,4 @@ Customer names, meter numbers, readings, photos, collection status, and receipts
 `PAID` is a manual field-collection status recorded by the meter reader. It is not a bank/payment-gateway settlement and does not replace official accounting records.
 
 Development work lands through feature branches and pull requests.
+Deployment: Cloudflare Pages production.
