@@ -118,6 +118,19 @@ export async function restoreBackup(file: File, mode: 'merge' | 'replace') {
   };
 }
 
+export async function resetPilotData() {
+  const preservedKeys = ['readerName', 'waterSystemName'];
+  const preservedSettings = (await Promise.all(preservedKeys.map((key) => db.settings.get(key))))
+    .filter((setting): setting is AppSettings => Boolean(setting));
+
+  await db.transaction('rw', db.customers, db.records, db.settings, async () => {
+    await db.records.clear();
+    await db.customers.clear();
+    await db.settings.clear();
+    if (preservedSettings.length) await db.settings.bulkPut(preservedSettings);
+  });
+}
+
 export async function getSetting<T>(key: string, fallback: T): Promise<T> {
   const setting = await db.settings.get(key);
   return (setting?.value as T | undefined) ?? fallback;
