@@ -18,14 +18,17 @@ export function createId(): string {
   return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10, 16).join('')}`;
 }
 
-// Temporary compatibility bridge for the existing save path during LAN testing.
-// Assign through a narrow structural type so TypeScript does not require the
-// template-literal return type of the native Crypto.randomUUID declaration.
+// The current save path calls crypto.randomUUID() directly. Some mobile browsers
+// omit randomUUID() on plain HTTP LAN origins, even though getRandomValues() is
+// still available. Define only the missing method and leave native implementations untouched.
 if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID !== 'function') {
   try {
-    const cryptoCompat = globalThis.crypto as unknown as { randomUUID?: () => string };
-    cryptoCompat.randomUUID = createId;
+    Object.defineProperty(globalThis.crypto, 'randomUUID', {
+      configurable: true,
+      value: createId,
+    });
   } catch {
-    // Do not break app startup if the host Crypto object is not extensible.
+    // If a browser forbids extending Crypto, the app remains loadable; production
+    // HTTPS provides the native method and is the intended deployment environment.
   }
 }
