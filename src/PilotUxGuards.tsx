@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { toBlob } from 'html-to-image';
+import { appConfirm, appPrompt } from './AppDialog';
 
 /**
  * Pilot-only browser-context guards.
@@ -18,6 +19,7 @@ export function PilotUxGuards() {
 
     let cleanupSelect: (() => void) | undefined;
     let scheduled = false;
+    let replayingRecordAction = false;
 
     async function receiptFile() {
       const receipt = document.querySelector<HTMLElement>('.receipt-card');
@@ -36,11 +38,129 @@ export function PilotUxGuards() {
       window.alert('Open this page in Chrome or Safari to use the phone share sheet.');
     }
 
-    const onReceiptAction = async (event: Event) => {
+    function replayRecordAction(button: HTMLButtonElement, confirms: boolean[], prompts: string[]) {
+      const nativeConfirm = window.confirm;
+      const nativePrompt = window.prompt;
+      let confirmIndex = 0;
+      let promptIndex = 0;
+
+      replayingRecordAction = true;
+      window.confirm = () => confirms[confirmIndex++] ?? false;
+      window.prompt = () => prompts[promptIndex++] ?? null;
+      try {
+        button.click();
+      } finally {
+        window.confirm = nativeConfirm;
+        window.prompt = nativePrompt;
+        replayingRecordAction = false;
+      }
+    }
+
+    async function handleRecordAction(event: Event, button: HTMLButtonElement, label: string) {
+      if (replayingRecordAction) return false;
+      if (!button.closest('.record-actions')) return false;
+
+      if (label === 'EDIT') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const proceed = await appConfirm(
+          'You are about to edit a saved field record. The original values will remain in the audit history.',
+          { title: 'Water Meter Reader', confirmLabel: 'EDIT RECORD' },
+        );
+        if (!proceed) return true;
+
+        const reason = (await appPrompt('Reason for editing this record (required)', '', {
+          title: 'Water Meter Reader', confirmLabel: 'NEXT',
+        }))?.trim();
+        if (!reason) return true;
+
+        const card = button.closest<HTMLElement>('.record-row');
+        const readings = card?.querySelectorAll('dd');
+        const previousDefault = readings?.[0]?.textContent?.trim() ?? '';
+        const currentDefault = readings?.[1]?.textContent?.trim() ?? '';
+        const previous = await appPrompt('Previous Reading', previousDefault, {
+          title: 'Water Meter Reader', confirmLabel: 'NEXT',
+        });
+        if (previous === null) return true;
+        const current = await appPrompt('Current Reading', currentDefault, {
+          title: 'Water Meter Reader', confirmLabel: 'REVIEW',
+        });
+        if (current === null) return true;
+
+        const finalConfirm = await appConfirm(
+          `Confirm this edit?\n\nPrevious: ${previousDefault} → ${previous}\nCurrent: ${currentDefault} → ${current}\n\nThe record will be marked EDITED.`,
+          { title: 'Water Meter Reader', confirmLabel: 'SAVE EDIT' },
+        );
+        if (!finalConfirm) return true;
+
+        replayRecordAction(button, [true, true], [reason, previous, current]);
+        return true;
+      }
+
+      if (label === 'VOID RECORD') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const proceed = await appConfirm(
+          'Void this saved record? It will be excluded from active totals but preserved as audit evidence.',
+          { title: 'Water Meter Reader', confirmLabel: 'CONTINUE' },
+        );
+        if (!proceed) return true;
+        const reason = (await appPrompt('Reason for voiding this record (required)', '', {
+          title: 'Water Meter Reader', confirmLabel: 'NEXT',
+        }))?.trim();
+        if (!reason) return true;
+        const finalConfirm = await appConfirm(
+          'Final confirmation: mark this record VOID? This does not permanently delete the record.',
+          { title: 'Water Meter Reader', confirmLabel: 'MARK VOID' },
+        );
+        if (!finalConfirm) return true;
+        replayRecordAction(button, [true, true], [reason]);
+        return true;
+      }
+
+      if (label === 'MARK PENDING') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const proceed = await appConfirm(
+          'Mark this record PENDING again? The meter reading itself will not be changed.',
+          { title: 'Water Meter Reader', confirmLabel: 'MARK PENDING' },
+        );
+        if (proceed) replayRecordAction(button, [true], []);
+        return true;
+      }
+
+      if (label === 'MARK PAID') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const method = await appPrompt('Payment method (optional: Cash, GCash, etc.)', '', {
+          title: 'Water Meter Reader', confirmLabel: 'NEXT',
+        });
+        if (method === null) return true;
+        const reference = await appPrompt('Payment reference / OR number (optional)', '', {
+          title: 'Water Meter Reader', confirmLabel: 'NEXT',
+        });
+        if (reference === null) return true;
+        const remarks = await appPrompt('Remarks (optional)', '', {
+          title: 'Water Meter Reader', confirmLabel: 'MARK PAID',
+        });
+        if (remarks === null) return true;
+        replayRecordAction(button, [], [method, reference, remarks]);
+        return true;
+      }
+
+      return false;
+    }
+
+    const onAction = async (event: Event) => {
       const target = event.target as HTMLElement | null;
-      const button = target?.closest<HTMLButtonElement>('.receipt-actions button');
+      const anyButton = target?.closest<HTMLButtonElement>('button');
+      if (!anyButton) return;
+      const label = anyButton.textContent?.trim().toUpperCase() ?? '';
+
+      if (await handleRecordAction(event, anyButton, label)) return;
+
+      const button = anyButton.closest('.receipt-actions') ? anyButton : null;
       if (!button) return;
-      const label = button.textContent?.trim().toUpperCase() ?? '';
 
       if (label.startsWith('PRINT') && mobile) {
         event.preventDefault();
@@ -88,7 +208,7 @@ export function PilotUxGuards() {
         try {
           const file = await receiptFile();
           const shareTitle = 'Water Meter Receipt';
-          const shareText = 'Water Meter Reader receipt attached.';
+          const shareText = 'Water Meter Reader receipt';
 
           if (navigator.share) {
             if (!navigator.canShare || navigator.canShare({ files: [file] })) {
@@ -159,7 +279,7 @@ export function PilotUxGuards() {
           if (shareButton.disabled) shareButton.disabled = false;
           const desiredText = inAppBrowser && !navigator.share ? 'OPEN IN CHROME TO SHARE' : 'SHARE RECEIPT';
           const desiredTitle = inAppBrowser && !navigator.share
-            ? 'Open the same receipt in Chrome to use the phone share sheet.'
+            ? 'Messenger in-app browser blocks the native share sheet. Open the same receipt in Chrome to share it.'
             : 'Share using the phone share sheet.';
           setTextIfChanged(shareButton, desiredText);
           if (shareButton.title !== desiredTitle) shareButton.title = desiredTitle;
@@ -173,13 +293,13 @@ export function PilotUxGuards() {
       window.requestAnimationFrame(syncUi);
     };
 
-    document.addEventListener('click', onReceiptAction, true);
+    document.addEventListener('click', onAction, true);
     syncUi();
     const observer = new MutationObserver(scheduleSync);
     observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
-      document.removeEventListener('click', onReceiptAction, true);
+      document.removeEventListener('click', onAction, true);
       observer.disconnect();
       cleanupSelect?.();
       delete root.dataset.historyStatus;
