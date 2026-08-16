@@ -1,21 +1,38 @@
 # Water Meter Reader Assistant
 
-Mobile-first, offline-first PWA for field water meter reading, deterministic charge computation, photo evidence, local record keeping, receipts, and printable daily logs.
+Mobile-first, offline-first PWA for field water meter reading, deterministic charge computation, photo evidence, local record keeping, receipts, collection tracking, and printable daily logs.
 
 ## Core workflow
 
-**Read → Capture → Compute → Record → Customer Folder → Receipt → Collection Status → Report**
+**Read → Capture → Compute → Record → Receipt → Report**
 
 The app is designed for meter readers working from a mobile phone, including areas with unreliable or no connectivity. The device and its local database are the primary working environment; cloud services are optional backup targets, not runtime dependencies.
 
-## v1 principles
+## Pilot v0.1
 
-- Offline-first and device-first
-- Evidence-first: meter photos support the record but never silently determine the reading
-- Deterministic and transparent billing computation
-- Preserve anomalous input and flag it for verification instead of silently correcting it
-- No mandatory account or cloud connection
-- Customer and meter data stay on the device by default
+The current pilot build includes:
+
+- deterministic billing and anomaly warnings
+- camera/file meter-photo evidence
+- IndexedDB local persistence
+- customer/meter folders and historical reading timeline
+- search plus **All / Pending / Paid / Void** history filtering
+- month and exact-date lookup inside customer folders
+- manual Paid/Pending collection state and optional payment details
+- guarded edit with revision history and an EDITED marker
+- guarded VOID workflow instead of destructive hard delete
+- PNG receipt save, print/PDF, share, and email handoff
+- printable Daily Log
+- Reader Name and Water System / Barangay pilot settings
+- explicit local **Export Backup** and **Restore Backup** workflows
+- Merge restore by default; Replace requires explicit destructive confirmations
+- last-backup reminder and visible pilot version
+
+## Data safety
+
+Records, photographs, audit history, and settings stay on the device by default. The pilot's backup export packages customers, readings, photos, statuses, audit fields, and settings into a JSON backup file. Restore never runs silently: the reader explicitly chooses Merge or Replace.
+
+For field use, export backups regularly and copy the backup file to another safe location such as phone storage, Drive, Dropbox, or iCloud when available.
 
 ## Billing rules
 
@@ -25,30 +42,16 @@ The app is designed for meter readers working from a mobile phone, including are
 - Consumption = current reading − previous reading
 - If current reading is lower than previous reading, preserve the negative consumption and mark the record **FLAGGED**
 
-## Current field workflow
-
-- Existing meter lookup can auto-fill the customer and latest reading
-- Duplicate same-day readings trigger a warning rather than silent rejection
-- Customer folders preserve the full reading timeline
-- Folder history can be filtered by all records, month, or exact date
-- Each reading carries manual `PAID` / `UNPAID` collection status
-- Marking paid can capture optional method, reference/OR number, and remarks
-- Meter photo evidence is viewable from the receipt
-- Receipts can be printed/PDF, saved as **PNG**, or shared as a PNG through the device share sheet when supported
-- Daily Log summarizes records, consumption, amount, unpaid readings, and flagged readings
-
-## Planned v1 stack
+## Stack
 
 - React + TypeScript + Vite
 - PWA / Service Worker
 - IndexedDB via Dexie
 - Camera capture via browser media/file APIs
-- Browser print, PNG rendering, and native share capabilities
+- Browser print, download, and share capabilities
 
-## Data ownership
+## Product boundaries
 
-Customer names, meter numbers, readings, photos, collection status, and receipts remain on the device by default. Backup/export is explicit and user-initiated.
-
-`PAID` is a manual field-collection status recorded by the meter reader. It is not a bank/payment-gateway settlement and does not replace official accounting records.
+The application is a field-record assistant, not the official billing/accounting system. `PAID` is a manual collection status recorded by the meter reader. OCR, mandatory accounts, payment gateways, cloud sync, and supervisor roles are intentionally deferred until a real workflow requires them.
 
 Development work lands through feature branches and pull requests.
