@@ -60,7 +60,14 @@ export interface ReadingRecord {
   notes?: string;
 }
 
+export type AppSettingKey =
+  | 'readerName'
+  | 'waterSystemName'
+  | 'lastBackupAt'
+  | 'lastRestoreAt'
+  | string;
+
 export interface AppSettings {
-  key: string;
+  key: AppSettingKey;
   value: unknown;
 }
