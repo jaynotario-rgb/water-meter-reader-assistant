@@ -18,11 +18,13 @@ export function createId(): string {
   return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10, 16).join('')}`;
 }
 
-// App.tsx still calls crypto.randomUUID() directly. For the temporary plain-HTTP
-// LAN pilot, install a guarded fallback without redefining browser descriptors.
+// Temporary compatibility bridge for the existing save path during LAN testing.
+// Assign through a narrow structural type so TypeScript does not require the
+// template-literal return type of the native Crypto.randomUUID declaration.
 if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID !== 'function') {
   try {
-    (globalThis.crypto as Crypto & { randomUUID?: () => string }).randomUUID = createId;
+    const cryptoCompat = globalThis.crypto as unknown as { randomUUID?: () => string };
+    cryptoCompat.randomUUID = createId;
   } catch {
     // Do not break app startup if the host Crypto object is not extensible.
   }
