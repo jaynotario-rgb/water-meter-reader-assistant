@@ -9,8 +9,6 @@ export function createId(): string {
   if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.getRandomValues === 'function') {
     globalThis.crypto.getRandomValues(bytes);
   } else {
-    // Last-resort compatibility for a constrained dev browser context.
-    // IDs only need local uniqueness for this offline-first field app.
     for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
   }
 
@@ -18,4 +16,14 @@ export function createId(): string {
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0'));
   return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10, 16).join('')}`;
+}
+
+// App.tsx still calls crypto.randomUUID() directly. For the temporary plain-HTTP
+// LAN pilot, install a guarded fallback without redefining browser descriptors.
+if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID !== 'function') {
+  try {
+    (globalThis.crypto as Crypto & { randomUUID?: () => string }).randomUUID = createId;
+  } catch {
+    // Do not break app startup if the host Crypto object is not extensible.
+  }
 }
