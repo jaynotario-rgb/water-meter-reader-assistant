@@ -25,7 +25,8 @@ export function PilotUxGuards() {
 
       const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.receipt-actions button'));
       const shareButton = buttons.find((button) => button.textContent?.trim().startsWith('SHARE'));
-      if (shareButton && !window.isSecureContext) {
+      if (shareButton && !window.isSecureContext && shareButton.dataset.httpsGuarded !== 'true') {
+        shareButton.dataset.httpsGuarded = 'true';
         shareButton.disabled = true;
         shareButton.textContent = 'SHARE (HTTPS)';
         shareButton.title = 'Native sharing becomes available on the HTTPS pilot deployment.';
