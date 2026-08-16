@@ -13,6 +13,7 @@ export function PilotSettings({ open, onClose }: PilotSettingsProps) {
   const [lastBackupAt, setLastBackupAt] = useState<string>();
   const [restoreMode, setRestoreMode] = useState<'merge' | 'replace'>('merge');
   const [message, setMessage] = useState<string>();
+  const [savingIdentity, setSavingIdentity] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -20,16 +21,40 @@ export function PilotSettings({ open, onClose }: PilotSettingsProps) {
       setReaderName(await getSetting('readerName', ''));
       setWaterSystemName(await getSetting('waterSystemName', ''));
       setLastBackupAt(await getSetting<string | undefined>('lastBackupAt', undefined));
+      setMessage(undefined);
     })();
   }, [open]);
 
   if (!open) return null;
 
   async function saveIdentity() {
-    await setSetting('readerName', readerName.trim());
-    await setSetting('waterSystemName', waterSystemName.trim());
-    window.dispatchEvent(new CustomEvent(FIELD_IDENTITY_UPDATED));
-    setMessage('Settings saved and applied to this device.');
+    setSavingIdentity(true);
+    setMessage(undefined);
+    try {
+      const nextReader = readerName.trim();
+      const nextSystem = waterSystemName.trim();
+      await Promise.all([
+        setSetting('readerName', nextReader),
+        setSetting('waterSystemName', nextSystem),
+      ]);
+
+      const [savedReader, savedSystem] = await Promise.all([
+        getSetting('readerName', ''),
+        getSetting('waterSystemName', ''),
+      ]);
+
+      if (savedReader !== nextReader || savedSystem !== nextSystem) {
+        throw new Error('Saved values could not be verified.');
+      }
+
+      window.dispatchEvent(new CustomEvent(FIELD_IDENTITY_UPDATED));
+      setMessage('Saved ✓ Reader and Water System / Barangay are stored on this device.');
+    } catch (error) {
+      console.error(error);
+      setMessage('Could not save field settings. Existing records were not changed.');
+    } finally {
+      setSavingIdentity(false);
+    }
   }
 
   async function handleBackup() {
@@ -90,7 +115,9 @@ export function PilotSettings({ open, onClose }: PilotSettingsProps) {
           Water System / Barangay
           <input value={waterSystemName} onChange={(e) => setWaterSystemName(e.target.value)} placeholder="Water system or barangay name" />
         </label>
-        <button type="button" className="secondary-button" onClick={() => void saveIdentity()}>SAVE SETTINGS</button>
+        <button type="button" className="secondary-button" disabled={savingIdentity} onClick={() => void saveIdentity()}>
+          {savingIdentity ? 'SAVING…' : 'SAVE SETTINGS'}
+        </button>
 
         <section className="pilot-safety">
           <div>
