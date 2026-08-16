@@ -17,6 +17,7 @@ export function PilotUxGuards() {
     root.dataset.inAppBrowser = String(inAppBrowser);
 
     let cleanupSelect: (() => void) | undefined;
+    let scheduled = false;
 
     async function receiptFile() {
       const receipt = document.querySelector<HTMLElement>('.receipt-card');
@@ -61,9 +62,6 @@ export function PilotUxGuards() {
           a.click();
           a.remove();
 
-          // Some Messenger/in-app browsers ignore the download attribute.
-          // Open the generated PNG as a visible fallback so the user can
-          // long-press/download it instead of receiving no feedback.
           if (inAppBrowser) {
             window.setTimeout(() => {
               const opened = window.open(url, '_blank', 'noopener');
@@ -80,7 +78,7 @@ export function PilotUxGuards() {
         return;
       }
 
-      if (label.startsWith('SHARE')) {
+      if (label.startsWith('SHARE') || label.startsWith('OPEN IN CHROME')) {
         event.preventDefault();
         event.stopImmediatePropagation();
         if (!navigator.onLine) {
@@ -97,16 +95,10 @@ export function PilotUxGuards() {
               await navigator.share({ title: shareTitle, text: shareText, files: [file] });
               return;
             }
-
-            // Some Android/WebView combinations support the native share sheet
-            // but not file attachments. Still open the system share targets.
             await navigator.share({ title: shareTitle, text: shareText, url: window.location.href });
             return;
           }
 
-          // Messenger's embedded browser may expose no Web Share API at all.
-          // Do not silently copy: send the user to full Chrome where the native
-          // Android share sheet (Messenger, Messages, Gmail, etc.) is available.
           openCurrentPageInChrome();
         } catch (error) {
           if ((error as DOMException).name !== 'AbortError') {
@@ -118,10 +110,19 @@ export function PilotUxGuards() {
       }
     };
 
+    function setTextIfChanged(element: HTMLElement, text: string) {
+      if (element.textContent?.trim() !== text) element.textContent = text;
+    }
+
+    function setDisplayIfChanged(element: HTMLElement, display: string) {
+      if (element.style.display !== display) element.style.display = display;
+    }
+
     const syncUi = () => {
+      scheduled = false;
       const select = document.querySelector<HTMLSelectElement>('.history-status-select');
       if (select) {
-        root.dataset.historyStatus = select.value;
+        if (root.dataset.historyStatus !== select.value) root.dataset.historyStatus = select.value;
         if (!select.dataset.guardBound) {
           const onChange = () => { root.dataset.historyStatus = select.value; };
           select.addEventListener('change', onChange);
@@ -131,37 +132,50 @@ export function PilotUxGuards() {
       }
 
       const receiptButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.receipt-actions button'));
-      const shareButton = receiptButtons.find((button) => button.textContent?.trim().startsWith('SHARE'));
+      const shareButton = receiptButtons.find((button) => {
+        const text = button.textContent?.trim().toUpperCase() ?? '';
+        return text.startsWith('SHARE') || text.startsWith('OPEN IN CHROME');
+      });
       const printButton = receiptButtons.find((button) => button.textContent?.trim().startsWith('PRINT'));
 
       if (printButton) {
-        printButton.style.display = mobile ? 'none' : '';
-        printButton.setAttribute('aria-hidden', mobile ? 'true' : 'false');
+        setDisplayIfChanged(printButton, mobile ? 'none' : '');
+        const hidden = mobile ? 'true' : 'false';
+        if (printButton.getAttribute('aria-hidden') !== hidden) printButton.setAttribute('aria-hidden', hidden);
       }
 
-      // Daily Log print is useful on desktop but confusing/unreliable in phone webviews.
       document.querySelectorAll<HTMLElement>('.daily-sheet .print-button').forEach((button) => {
-        button.style.display = mobile ? 'none' : '';
+        setDisplayIfChanged(button, mobile ? 'none' : '');
       });
 
       if (shareButton) {
         if (!window.isSecureContext) {
-          shareButton.disabled = true;
-          shareButton.textContent = 'SHARE (HTTPS)';
-          shareButton.title = 'Native sharing becomes available on the HTTPS pilot deployment.';
+          if (!shareButton.disabled) shareButton.disabled = true;
+          setTextIfChanged(shareButton, 'SHARE (HTTPS)');
+          if (shareButton.title !== 'Native sharing becomes available on the HTTPS pilot deployment.') {
+            shareButton.title = 'Native sharing becomes available on the HTTPS pilot deployment.';
+          }
         } else {
-          shareButton.disabled = false;
-          shareButton.textContent = inAppBrowser && !navigator.share ? 'OPEN IN CHROME TO SHARE' : 'SHARE RECEIPT';
-          shareButton.title = inAppBrowser && !navigator.share
+          if (shareButton.disabled) shareButton.disabled = false;
+          const desiredText = inAppBrowser && !navigator.share ? 'OPEN IN CHROME TO SHARE' : 'SHARE RECEIPT';
+          const desiredTitle = inAppBrowser && !navigator.share
             ? 'Messenger in-app browser blocks the native share sheet. Open the same receipt in Chrome to share it.'
             : 'Share using the phone share sheet.';
+          setTextIfChanged(shareButton, desiredText);
+          if (shareButton.title !== desiredTitle) shareButton.title = desiredTitle;
         }
       }
     };
 
+    const scheduleSync = () => {
+      if (scheduled) return;
+      scheduled = true;
+      window.requestAnimationFrame(syncUi);
+    };
+
     document.addEventListener('click', onReceiptAction, true);
     syncUi();
-    const observer = new MutationObserver(syncUi);
+    const observer = new MutationObserver(scheduleSync);
     observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
