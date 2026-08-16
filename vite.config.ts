@@ -19,6 +19,14 @@ export default defineConfig({
         display: 'standalone',
         start_url: base,
         scope: base,
+        icons: [
+          {
+            src: `${base}meter-reader-icon.svg`,
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'any maskable',
+          },
+        ],
       },
     }),
   ],
