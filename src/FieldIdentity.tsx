@@ -28,7 +28,7 @@ export function FieldIdentity() {
   }, []);
 
   useEffect(() => {
-    const findTarget = () => setReceiptTarget(document.querySelector('.receipt-card'));
+    const findTarget = () => setReceiptTarget(document.querySelector('.receipt-header'));
     findTarget();
     const observer = new MutationObserver(findTarget);
     observer.observe(document.body, { childList: true, subtree: true });
