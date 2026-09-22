@@ -264,10 +264,6 @@ export function PilotUxGuards() {
         if (printButton.getAttribute('aria-hidden') !== hidden) printButton.setAttribute('aria-hidden', hidden);
       }
 
-      document.querySelectorAll<HTMLElement>('.daily-sheet .print-button').forEach((button) => {
-        setDisplayIfChanged(button, mobile ? 'none' : '');
-      });
-
       if (shareButton) {
         if (!window.isSecureContext) {
           if (!shareButton.disabled) shareButton.disabled = true;

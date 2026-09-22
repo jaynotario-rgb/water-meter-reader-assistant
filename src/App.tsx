@@ -4,6 +4,8 @@ import { createId } from './compat';
 import { db } from './data/db';
 import { calculateBilling } from './domain/billing';
 import type { Customer, ReadingRecord, RecordRevision } from './domain/models';
+import { getSetting } from './pilot-data';
+import { downloadDailyReportCsv, downloadRecordsReportCsv } from './report-export';
 
 const money = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
 type Screen = 'reading' | 'history' | 'daily' | 'folder' | 'receipt';
@@ -294,6 +296,12 @@ export function App() {
     return !q || latest.customerName.toLowerCase().includes(q) || latest.meterNumber.toLowerCase().includes(q);
   });
 
+  const historyExportRecords = records.filter((record) => {
+    if (!matchesHistoryStatus(record, historyStatus)) return false;
+    const q = search.trim().toLowerCase();
+    return !q || record.customerName.toLowerCase().includes(q) || record.meterNumber.toLowerCase().includes(q);
+  });
+
   const today = new Date().toLocaleDateString('en-CA');
   const todayRecords = records.filter((r) => isActive(r) && sameLocalDate(r.capturedAt, today));
   const dailyTotals = todayRecords.reduce((a, r) => ({
@@ -338,6 +346,47 @@ export function App() {
     }
   }
 
+  async function exportDailyExcel() {
+    if (todayRecords.length === 0) {
+      setMessage('No active readings are available in today\'s Daily Log.');
+      return;
+    }
+    try {
+      const [readerName, waterSystemName] = await Promise.all([
+        getSetting('readerName', ''),
+        getSetting('waterSystemName', ''),
+      ]);
+      const fileName = downloadDailyReportCsv(todayRecords, { readerName, waterSystemName });
+      setMessage(`Excel-ready report saved: ${fileName}`);
+    } catch (error) {
+      console.error(error);
+      setMessage('Could not create the Excel-ready report. No records were changed.');
+    }
+  }
+
+  async function exportHistoryExcel() {
+    if (historyExportRecords.length === 0) {
+      setMessage('No records match the current History filter and search.');
+      return;
+    }
+    try {
+      const [readerName, waterSystemName] = await Promise.all([
+        getSetting('readerName', ''),
+        getSetting('waterSystemName', ''),
+      ]);
+      const scope = historyStatus === 'all' ? 'all-records' : `${historyStatus}-records`;
+      const fileName = downloadRecordsReportCsv(
+        historyExportRecords,
+        { readerName, waterSystemName },
+        scope,
+      );
+      setMessage(`History report saved: ${fileName}`);
+    } catch (error) {
+      console.error(error);
+      setMessage('Could not create the History report. No records were changed.');
+    }
+  }
+
   function emailReceipt(record: ReadingRecord) {
     if (!online) { setMessage('Email needs internet. Save the receipt and send it later.'); return; }
     window.location.href = `mailto:?subject=${encodeURIComponent(`Water Meter Receipt - ${record.customerName}`)}&body=${encodeURIComponent(receiptText(record))}`;
@@ -364,7 +413,8 @@ export function App() {
 
     {screen === 'history' && <section className="screen-card"><div className="section-heading"><div><p className="eyebrow">CUSTOMER RECORDS</p><h2>History</h2></div><strong>{filteredFolders.length}</strong></div>
       <div className="history-tools"><input className="search-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search customer or meter number" /><select className="history-status-select" aria-label="History status" value={historyStatus} onChange={(e) => setHistoryStatus(e.target.value as HistoryStatusFilter)}><option value="all">All Records</option><option value="pending">Pending</option><option value="paid">Paid</option><option value="void">Void</option></select></div>
-      <p className="history-filter-note">Status filter stays active when you open a customer folder.</p>
+      <button className="history-export-button" type="button" disabled={historyExportRecords.length === 0} onClick={() => void exportHistoryExcel()}>EXPORT CURRENT VIEW (.CSV)</button>
+      <p className="history-filter-note">Exports {historyExportRecords.length} matching record{historyExportRecords.length === 1 ? '' : 's'} from the selected status and search. The status filter also stays active inside customer folders.</p>
       {filteredFolders.length === 0 ? <p className="empty-state">No matching customer records.</p> : <div className="folder-list">{filteredFolders.map(({ customerId, latest, count, voided, unpaid, matching }) => <button className="folder-row" key={customerId} type="button" onClick={() => openFolder(customerId)}><div><strong>{latest.customerName}</strong><span className="meter-emphasis">{latest.meterNumber}</span><span>Latest match: {new Date(latest.capturedAt).toLocaleDateString()}</span></div><div className="folder-meta">{historyStatus === 'all' ? <><strong>{count} active reading{count === 1 ? '' : 's'}</strong><span>{unpaid ? `${unpaid} pending` : 'All active marked paid'}</span>{voided > 0 && <span>{voided} voided</span>}</> : <><strong>{matching} {historyStatus.toUpperCase()} match{matching === 1 ? '' : 'es'}</strong></>}</div></button>)}</div>}
     </section>}
 
@@ -383,7 +433,7 @@ export function App() {
       <div className="receipt-actions no-print"><button type="button" onClick={() => window.print()}>PRINT / PDF</button><button type="button" onClick={() => void saveReceipt(selectedRecord)}>SAVE RECEIPT</button><button type="button" onClick={() => void shareReceipt(selectedRecord)} disabled={!online}>SHARE RECEIPT</button><button type="button" onClick={() => emailReceipt(selectedRecord)} disabled={!online}>EMAIL</button></div>
     </section>}
 
-    {screen === 'daily' && <section className="screen-card daily-sheet"><div className="section-heading"><div><p className="eyebrow">FIELD REPORT</p><h2>Daily Log</h2><span>{new Date().toLocaleDateString()}</span></div><button className="print-button" type="button" onClick={() => window.print()}>PRINT / PDF</button></div><div className="summary-grid"><div><span>Records</span><strong>{todayRecords.length}</strong></div><div><span>Consumption</span><strong>{dailyTotals.consumption} m³</strong></div><div><span>Amount</span><strong>{money.format(dailyTotals.amount)}</strong></div><div><span>Pending</span><strong>{dailyTotals.unpaid}</strong></div><div><span>Flagged</span><strong>{dailyTotals.flagged}</strong></div></div>{todayRecords.length === 0 ? <p className="empty-state">No active readings saved today.</p> : <div className="table-wrap"><table><thead><tr><th>Customer</th><th>Meter</th><th>Prev</th><th>Current</th><th>Use</th><th>Amount</th><th>Collection</th><th>Reading</th><th>Audit</th></tr></thead><tbody>{todayRecords.map((r) => <tr key={r.id}><td>{r.customerName}</td><td>{r.meterNumber}</td><td>{r.previousReading}</td><td>{r.currentReading}</td><td>{r.consumption}</td><td>{money.format(r.total)}</td><td>{(r.paymentStatus ?? 'UNPAID') === 'UNPAID' ? 'PENDING' : 'PAID'}</td><td>{r.status}</td><td>{r.editedAt ? 'EDITED' : 'ORIGINAL'}</td></tr>)}</tbody></table></div>}</section>}
+    {screen === 'daily' && <section className="screen-card daily-sheet"><div className="section-heading"><div><p className="eyebrow">FIELD REPORT</p><h2>Daily Log</h2><span>{new Date().toLocaleDateString()}</span></div></div><div className="report-actions no-print"><button className="print-button" type="button" disabled={todayRecords.length === 0} onClick={() => window.print()}>EXPORT PDF / PRINT</button><button className="print-button" type="button" disabled={todayRecords.length === 0} onClick={() => void exportDailyExcel()}>EXPORT EXCEL (.CSV)</button></div><p className="report-note no-print">PDF opens the device print dialog. The Excel-ready CSV opens in Excel, Google Sheets, or LibreOffice.</p><div className="summary-grid"><div><span>Records</span><strong>{todayRecords.length}</strong></div><div><span>Consumption</span><strong>{dailyTotals.consumption} m³</strong></div><div><span>Amount</span><strong>{money.format(dailyTotals.amount)}</strong></div><div><span>Pending</span><strong>{dailyTotals.unpaid}</strong></div><div><span>Flagged</span><strong>{dailyTotals.flagged}</strong></div></div>{todayRecords.length === 0 ? <p className="empty-state">No active readings saved today.</p> : <div className="table-wrap"><table><thead><tr><th>Customer</th><th>Meter</th><th>Prev</th><th>Current</th><th>Use</th><th>Amount</th><th>Collection</th><th>Reading</th><th>Audit</th></tr></thead><tbody>{todayRecords.map((r) => <tr key={r.id}><td>{r.customerName}</td><td>{r.meterNumber}</td><td>{r.previousReading}</td><td>{r.currentReading}</td><td>{r.consumption}</td><td>{money.format(r.total)}</td><td>{(r.paymentStatus ?? 'UNPAID') === 'UNPAID' ? 'PENDING' : 'PAID'}</td><td>{r.status}</td><td>{r.editedAt ? 'EDITED' : 'ORIGINAL'}</td></tr>)}</tbody></table></div>}</section>}
 
     <nav className="bottom-nav no-print"><button className={screen === 'reading' ? 'active' : ''} type="button" onClick={() => setScreen('reading')}>Reading</button><button className={['history','folder','receipt'].includes(screen) ? 'active' : ''} type="button" onClick={() => setScreen('history')}>History</button><button className={screen === 'daily' ? 'active' : ''} type="button" onClick={() => setScreen('daily')}>Daily Log</button></nav>
   </main>;
