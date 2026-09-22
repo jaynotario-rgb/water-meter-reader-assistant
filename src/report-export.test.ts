@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ReadingRecord } from './domain/models';
-import { buildDailyReportCsv, dailyReportFileName } from './report-export';
+import { buildRecordsReportCsv, recordsReportFileName } from './report-export';
 
 const record: ReadingRecord = {
   id: 'record-1',
@@ -24,7 +24,7 @@ const record: ReadingRecord = {
 
 describe('daily report CSV', () => {
   it('exports complete report fields with Excel-safe user input', () => {
-    const csv = buildDailyReportCsv([record], {
+    const csv = buildRecordsReportCsv([record], {
       readerName: 'Maria Santos',
       waterSystemName: 'Barangay Malinis',
     });
@@ -39,7 +39,7 @@ describe('daily report CSV', () => {
   });
 
   it('uses a predictable date-based file name', () => {
-    expect(dailyReportFileName(new Date('2026-09-22T12:00:00')))
-      .toBe('water-meter-daily-log-2026-09-22.csv');
+    expect(recordsReportFileName('Paid Records', new Date('2026-09-22T12:00:00')))
+      .toBe('water-meter-paid-records-2026-09-22.csv');
   });
 });
