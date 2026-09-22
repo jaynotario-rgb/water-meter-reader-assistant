@@ -41,6 +41,7 @@ input:focus { border-color: #0f172a; box-shadow: 0 0 0 3px rgb(15 23 42 / 10%); 
 .section-heading > strong { min-width: 38px; text-align: center; padding: 8px; border-radius: 999px; background: #e2e8f0; }
 .section-heading span { display: block; margin-top: 4px; color: #64748b; font-size: 12px; }
 .search-input { background: #f8fafc; }
+.history-export-button { min-height: 48px; border: 1px solid #0f172a; border-radius: 11px; background: #0f172a; color: white; font-size: 12px; font-weight: 900; letter-spacing: .02em; }
 .folder-list { display: grid; gap: 10px; }
 .folder-row { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 14px; border: 1px solid #e2e8f0; border-radius: 14px; background: white; text-align: left; }
 .folder-row > div { display: grid; gap: 3px; }
