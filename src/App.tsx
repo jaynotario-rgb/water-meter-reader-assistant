@@ -4,6 +4,8 @@ import { createId } from './compat';
 import { db } from './data/db';
 import { calculateBilling } from './domain/billing';
 import type { Customer, ReadingRecord, RecordRevision } from './domain/models';
+import { getSetting } from './pilot-data';
+import { downloadDailyReportCsv } from './report-export';
 
 const money = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
 type Screen = 'reading' | 'history' | 'daily' | 'folder' | 'receipt';
@@ -338,6 +340,24 @@ export function App() {
     }
   }
 
+  async function exportDailyExcel() {
+    if (todayRecords.length === 0) {
+      setMessage('No active readings are available in today\'s Daily Log.');
+      return;
+    }
+    try {
+      const [readerName, waterSystemName] = await Promise.all([
+        getSetting('readerName', ''),
+        getSetting('waterSystemName', ''),
+      ]);
+      const fileName = downloadDailyReportCsv(todayRecords, { readerName, waterSystemName });
+      setMessage(`Excel-ready report saved: ${fileName}`);
+    } catch (error) {
+      console.error(error);
+      setMessage('Could not create the Excel-ready report. No records were changed.');
+    }
+  }
+
   function emailReceipt(record: ReadingRecord) {
     if (!online) { setMessage('Email needs internet. Save the receipt and send it later.'); return; }
     window.location.href = `mailto:?subject=${encodeURIComponent(`Water Meter Receipt - ${record.customerName}`)}&body=${encodeURIComponent(receiptText(record))}`;
@@ -383,7 +403,7 @@ export function App() {
       <div className="receipt-actions no-print"><button type="button" onClick={() => window.print()}>PRINT / PDF</button><button type="button" onClick={() => void saveReceipt(selectedRecord)}>SAVE RECEIPT</button><button type="button" onClick={() => void shareReceipt(selectedRecord)} disabled={!online}>SHARE RECEIPT</button><button type="button" onClick={() => emailReceipt(selectedRecord)} disabled={!online}>EMAIL</button></div>
     </section>}
 
-    {screen === 'daily' && <section className="screen-card daily-sheet"><div className="section-heading"><div><p className="eyebrow">FIELD REPORT</p><h2>Daily Log</h2><span>{new Date().toLocaleDateString()}</span></div><button className="print-button" type="button" onClick={() => window.print()}>PRINT / PDF</button></div><div className="summary-grid"><div><span>Records</span><strong>{todayRecords.length}</strong></div><div><span>Consumption</span><strong>{dailyTotals.consumption} m³</strong></div><div><span>Amount</span><strong>{money.format(dailyTotals.amount)}</strong></div><div><span>Pending</span><strong>{dailyTotals.unpaid}</strong></div><div><span>Flagged</span><strong>{dailyTotals.flagged}</strong></div></div>{todayRecords.length === 0 ? <p className="empty-state">No active readings saved today.</p> : <div className="table-wrap"><table><thead><tr><th>Customer</th><th>Meter</th><th>Prev</th><th>Current</th><th>Use</th><th>Amount</th><th>Collection</th><th>Reading</th><th>Audit</th></tr></thead><tbody>{todayRecords.map((r) => <tr key={r.id}><td>{r.customerName}</td><td>{r.meterNumber}</td><td>{r.previousReading}</td><td>{r.currentReading}</td><td>{r.consumption}</td><td>{money.format(r.total)}</td><td>{(r.paymentStatus ?? 'UNPAID') === 'UNPAID' ? 'PENDING' : 'PAID'}</td><td>{r.status}</td><td>{r.editedAt ? 'EDITED' : 'ORIGINAL'}</td></tr>)}</tbody></table></div>}</section>}
+    {screen === 'daily' && <section className="screen-card daily-sheet"><div className="section-heading"><div><p className="eyebrow">FIELD REPORT</p><h2>Daily Log</h2><span>{new Date().toLocaleDateString()}</span></div></div><div className="report-actions no-print"><button className="print-button" type="button" disabled={todayRecords.length === 0} onClick={() => window.print()}>EXPORT PDF / PRINT</button><button className="print-button" type="button" disabled={todayRecords.length === 0} onClick={() => void exportDailyExcel()}>EXPORT EXCEL (.CSV)</button></div><p className="report-note no-print">PDF opens the device print dialog. The Excel-ready CSV opens in Excel, Google Sheets, or LibreOffice.</p><div className="summary-grid"><div><span>Records</span><strong>{todayRecords.length}</strong></div><div><span>Consumption</span><strong>{dailyTotals.consumption} m³</strong></div><div><span>Amount</span><strong>{money.format(dailyTotals.amount)}</strong></div><div><span>Pending</span><strong>{dailyTotals.unpaid}</strong></div><div><span>Flagged</span><strong>{dailyTotals.flagged}</strong></div></div>{todayRecords.length === 0 ? <p className="empty-state">No active readings saved today.</p> : <div className="table-wrap"><table><thead><tr><th>Customer</th><th>Meter</th><th>Prev</th><th>Current</th><th>Use</th><th>Amount</th><th>Collection</th><th>Reading</th><th>Audit</th></tr></thead><tbody>{todayRecords.map((r) => <tr key={r.id}><td>{r.customerName}</td><td>{r.meterNumber}</td><td>{r.previousReading}</td><td>{r.currentReading}</td><td>{r.consumption}</td><td>{money.format(r.total)}</td><td>{(r.paymentStatus ?? 'UNPAID') === 'UNPAID' ? 'PENDING' : 'PAID'}</td><td>{r.status}</td><td>{r.editedAt ? 'EDITED' : 'ORIGINAL'}</td></tr>)}</tbody></table></div>}</section>}
 
     <nav className="bottom-nav no-print"><button className={screen === 'reading' ? 'active' : ''} type="button" onClick={() => setScreen('reading')}>Reading</button><button className={['history','folder','receipt'].includes(screen) ? 'active' : ''} type="button" onClick={() => setScreen('history')}>History</button><button className={screen === 'daily' ? 'active' : ''} type="button" onClick={() => setScreen('daily')}>Daily Log</button></nav>
   </main>;
