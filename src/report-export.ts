@@ -52,7 +52,7 @@ function localDateParts(iso: string) {
   };
 }
 
-export function buildDailyReportCsv(records: ReadingRecord[], identity: ReportIdentity = {}): string {
+export function buildRecordsReportCsv(records: ReadingRecord[], identity: ReportIdentity = {}): string {
   const rows = records.map((record) => {
     const captured = localDateParts(record.capturedAt);
     return [
@@ -89,16 +89,21 @@ export function buildDailyReportCsv(records: ReadingRecord[], identity: ReportId
   return `\uFEFF${[CSV_HEADERS.map(csvCell).join(','), ...rows].join('\r\n')}`;
 }
 
-export function dailyReportFileName(date = new Date()): string {
-  return `water-meter-daily-log-${date.toLocaleDateString('en-CA')}.csv`;
+function fileSafeScope(scope: string): string {
+  return scope.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'records';
 }
 
-export function downloadDailyReportCsv(
+export function recordsReportFileName(scope: string, date = new Date()): string {
+  return `water-meter-${fileSafeScope(scope)}-${date.toLocaleDateString('en-CA')}.csv`;
+}
+
+export function downloadRecordsReportCsv(
   records: ReadingRecord[],
   identity: ReportIdentity = {},
+  scope = 'records',
 ): string {
-  const fileName = dailyReportFileName();
-  const blob = new Blob([buildDailyReportCsv(records, identity)], { type: 'text/csv;charset=utf-8' });
+  const fileName = recordsReportFileName(scope);
+  const blob = new Blob([buildRecordsReportCsv(records, identity)], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -109,4 +114,8 @@ export function downloadDailyReportCsv(
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   return fileName;
+}
+
+export function downloadDailyReportCsv(records: ReadingRecord[], identity: ReportIdentity = {}): string {
+  return downloadRecordsReportCsv(records, identity, 'daily-log');
 }
