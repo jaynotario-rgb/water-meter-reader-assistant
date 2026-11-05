@@ -5,12 +5,13 @@ import { db } from './data/db';
 import { calculateBilling } from './domain/billing';
 import type { Customer, ReadingRecord, RecordRevision } from './domain/models';
 import { getSetting } from './pilot-data';
-import { downloadDailyReportCsv, downloadRecordsReportCsv } from './report-export';
+import { downloadDailyReportCsv, downloadRecordsReportXlsx } from './report-export';
 
 const money = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
 type Screen = 'reading' | 'history' | 'daily' | 'folder' | 'receipt';
 type FolderFilter = 'all' | 'month' | 'date';
 type HistoryStatusFilter = 'all' | 'pending' | 'paid' | 'void';
+type ExportScope = 'all' | 'current' | 'selected';
 
 function sameLocalDate(iso: string, date: string) {
   return new Date(iso).toLocaleDateString('en-CA') === date;
@@ -76,6 +77,9 @@ export function App() {
   const [folderFilter, setFolderFilter] = useState<FolderFilter>('all');
   const [folderMonth, setFolderMonth] = useState(new Date().toISOString().slice(0, 7));
   const [folderDate, setFolderDate] = useState(new Date().toLocaleDateString('en-CA'));
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportScope, setExportScope] = useState<ExportScope>('current');
+  const [selectedExportIds, setSelectedExportIds] = useState<Set<string>>(new Set());
   const receiptRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -302,6 +306,21 @@ export function App() {
     return !q || record.customerName.toLowerCase().includes(q) || record.meterNumber.toLowerCase().includes(q);
   });
 
+  const selectedExportRecords = records.filter((record) => selectedExportIds.has(record.id));
+  const exportRecords = exportScope === 'all'
+    ? records
+    : exportScope === 'selected'
+      ? selectedExportRecords
+      : historyExportRecords;
+  const exportActiveRecords = exportRecords.filter(isActive);
+  const exportSummary = {
+    total: exportRecords.length,
+    paid: exportActiveRecords.filter((record) => (record.paymentStatus ?? 'UNPAID') === 'PAID').length,
+    pending: exportActiveRecords.filter((record) => (record.paymentStatus ?? 'UNPAID') === 'UNPAID').length,
+    void: exportRecords.filter((record) => !isActive(record)).length,
+    amount: exportActiveRecords.reduce((sum, record) => sum + record.total, 0),
+  };
+
   const today = new Date().toLocaleDateString('en-CA');
   const todayRecords = records.filter((r) => isActive(r) && sameLocalDate(r.capturedAt, today));
   const dailyTotals = todayRecords.reduce((a, r) => ({
@@ -364,9 +383,18 @@ export function App() {
     }
   }
 
+  function toggleExportRecord(recordId: string) {
+    setSelectedExportIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+      if (nextIds.has(recordId)) nextIds.delete(recordId);
+      else nextIds.add(recordId);
+      return nextIds;
+    });
+  }
+
   async function exportHistoryExcel() {
-    if (historyExportRecords.length === 0) {
-      setMessage('No records match the current History filter and search.');
+    if (exportRecords.length === 0) {
+      setMessage(exportScope === 'selected' ? 'Choose at least one record to export.' : 'No records are available for this export scope.');
       return;
     }
     try {
@@ -374,13 +402,18 @@ export function App() {
         getSetting('readerName', ''),
         getSetting('waterSystemName', ''),
       ]);
-      const scope = historyStatus === 'all' ? 'all-records' : `${historyStatus}-records`;
-      const fileName = downloadRecordsReportCsv(
-        historyExportRecords,
+      const scope = exportScope === 'all'
+        ? 'all-records'
+        : exportScope === 'selected'
+          ? 'selected-records'
+          : historyStatus === 'all' ? 'current-view' : `${historyStatus}-current-view`;
+      const fileName = await downloadRecordsReportXlsx(
+        exportRecords,
         { readerName, waterSystemName },
         scope,
       );
-      setMessage(`History report saved: ${fileName}`);
+      setExportOpen(false);
+      setMessage(`Excel workbook saved: ${fileName}`);
     } catch (error) {
       console.error(error);
       setMessage('Could not create the History report. No records were changed.');
@@ -413,10 +446,30 @@ export function App() {
 
     {screen === 'history' && <section className="screen-card"><div className="section-heading"><div><p className="eyebrow">CUSTOMER RECORDS</p><h2>History</h2></div><strong>{filteredFolders.length}</strong></div>
       <div className="history-tools"><input className="search-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search customer or meter number" /><select className="history-status-select" aria-label="History status" value={historyStatus} onChange={(e) => setHistoryStatus(e.target.value as HistoryStatusFilter)}><option value="all">All Records</option><option value="pending">Pending</option><option value="paid">Paid</option><option value="void">Void</option></select></div>
-      <button className="history-export-button" type="button" disabled={historyExportRecords.length === 0} onClick={() => void exportHistoryExcel()}>EXPORT CURRENT VIEW (.CSV)</button>
-      <p className="history-filter-note">Exports {historyExportRecords.length} matching record{historyExportRecords.length === 1 ? '' : 's'} from the selected status and search. The status filter also stays active inside customer folders.</p>
+      <button className="history-export-button" type="button" disabled={records.length === 0} onClick={() => setExportOpen(true)}>OPEN EXPORT CENTER</button>
+      <p className="history-filter-note">Export all records, the {historyExportRecords.length} record{historyExportRecords.length === 1 ? '' : 's'} in the current view, or records you select. The status filter also stays active inside customer folders.</p>
       {filteredFolders.length === 0 ? <p className="empty-state">No matching customer records.</p> : <div className="folder-list">{filteredFolders.map(({ customerId, latest, count, voided, unpaid, matching }) => <button className="folder-row" key={customerId} type="button" onClick={() => openFolder(customerId)}><div><strong>{latest.customerName}</strong><span className="meter-emphasis">{latest.meterNumber}</span><span>Latest match: {new Date(latest.capturedAt).toLocaleDateString()}</span></div><div className="folder-meta">{historyStatus === 'all' ? <><strong>{count} active reading{count === 1 ? '' : 's'}</strong><span>{unpaid ? `${unpaid} pending` : 'All active marked paid'}</span>{voided > 0 && <span>{voided} voided</span>}</> : <><strong>{matching} {historyStatus.toUpperCase()} match{matching === 1 ? '' : 'es'}</strong></>}</div></button>)}</div>}
     </section>}
+
+    {exportOpen && <div className="export-overlay" role="dialog" aria-modal="true" aria-labelledby="export-title">
+      <section className="export-panel">
+        <div className="export-heading"><div><p className="eyebrow">DOCUMENTATION</p><h2 id="export-title">Export Center</h2></div><button type="button" className="pilot-close" onClick={() => setExportOpen(false)}>CLOSE</button></div>
+        <p className="export-help">Create a real Excel workbook with separate Summary and Records sheets. Local records and photos will not be changed.</p>
+        <fieldset className="export-scopes"><legend>Choose records</legend>
+          <label><input type="radio" name="export-scope" checked={exportScope === 'all'} onChange={() => setExportScope('all')} /><span><strong>All records</strong><small>{records.length} total</small></span></label>
+          <label><input type="radio" name="export-scope" checked={exportScope === 'current'} onChange={() => setExportScope('current')} /><span><strong>Current filtered view</strong><small>{historyExportRecords.length} matching</small></span></label>
+          <label><input type="radio" name="export-scope" checked={exportScope === 'selected'} onChange={() => setExportScope('selected')} /><span><strong>Selected records</strong><small>{selectedExportIds.size} selected</small></span></label>
+        </fieldset>
+
+        {exportScope === 'selected' && <section className="export-selection"><div className="export-selection-tools"><strong>Select records</strong><div><button type="button" onClick={() => setSelectedExportIds(new Set(historyExportRecords.map((record) => record.id)))}>SELECT CURRENT VIEW</button><button type="button" onClick={() => setSelectedExportIds(new Set())}>CLEAR</button></div></div>
+          <div className="export-record-list">{historyExportRecords.length === 0 ? <p className="empty-state">No records match the current History filter.</p> : historyExportRecords.map((record) => <label key={record.id} className="export-record"><input type="checkbox" checked={selectedExportIds.has(record.id)} onChange={() => toggleExportRecord(record.id)} /><span><strong>{record.customerName}</strong><small>{record.meterNumber} · {new Date(record.capturedAt).toLocaleDateString()} · {!isActive(record) ? 'VOID' : (record.paymentStatus ?? 'UNPAID') === 'PAID' ? 'PAID' : 'PENDING'}</small></span><b>{money.format(record.total)}</b></label>)}</div>
+        </section>}
+
+        <section className="export-review"><strong>Export review</strong><div><span>Records<b>{exportSummary.total}</b></span><span>Paid<b>{exportSummary.paid}</b></span><span>Pending<b>{exportSummary.pending}</b></span><span>Void<b>{exportSummary.void}</b></span><span>Active amount<b>{money.format(exportSummary.amount)}</b></span></div></section>
+        <button className="save-button" type="button" disabled={exportRecords.length === 0} onClick={() => void exportHistoryExcel()}>SAVE EXCEL WORKBOOK (.XLSX)</button>
+        <p className="history-filter-note">The JSON backup remains separate because it is the file used to restore records and photos.</p>
+      </section>
+    </div>}
 
     {screen === 'folder' && <section className="screen-card"><button className="back-button" type="button" onClick={() => setScreen('history')}>← BACK TO HISTORY</button><div className="section-heading"><div><p className="eyebrow">CUSTOMER FOLDER</p><h2>{folderCustomer?.customerName ?? 'Customer'}</h2><span className="meter-emphasis">{folderCustomer?.meterNumber}</span><span>History status: {historyStatus === 'all' ? 'All Records' : historyStatus.toUpperCase()}</span></div><strong>{filteredFolderRecords.length}</strong></div>
       <div className="filter-bar"><button className={folderFilter === 'all' ? 'active' : ''} type="button" onClick={() => setFolderFilter('all')}>ALL DATES</button><button className={folderFilter === 'month' ? 'active' : ''} type="button" onClick={() => setFolderFilter('month')}>MONTH</button><button className={folderFilter === 'date' ? 'active' : ''} type="button" onClick={() => setFolderFilter('date')}>DATE</button></div>
