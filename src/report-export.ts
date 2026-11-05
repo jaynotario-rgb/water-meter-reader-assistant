@@ -153,7 +153,7 @@ function recordToWorkbookRow(record: ReadingRecord, identity: ReportIdentity) {
 }
 
 export async function buildRecordsWorkbook(records: ReadingRecord[], identity: ReportIdentity = {}) {
-  const XLSX = await import('xlsx');
+  const { strToU8, zipSync } = await import('fflate');
   const active = records.filter((record) => (record.recordState ?? 'ACTIVE') === 'ACTIVE');
   const summary = [{
     'Exported Records': records.length,
@@ -169,16 +169,39 @@ export async function buildRecordsWorkbook(records: ReadingRecord[], identity: R
     'Generated At': new Date().toLocaleString('en-PH'),
   }];
 
-  const workbook = XLSX.utils.book_new();
-  const recordsSheet = XLSX.utils.json_to_sheet(records.map((record) => recordToWorkbookRow(record, identity)));
-  const summarySheet = XLSX.utils.json_to_sheet(summary);
-  recordsSheet['!freeze'] = { xSplit: 0, ySplit: 1 };
-  recordsSheet['!autofilter'] = { ref: recordsSheet['!ref'] ?? 'A1:A1' };
-  recordsSheet['!cols'] = CSV_HEADERS.map((header) => ({ wch: Math.min(Math.max(header.length + 2, 12), 28) }));
-  summarySheet['!cols'] = Object.keys(summary[0]).map((header) => ({ wch: Math.min(Math.max(header.length + 2, 14), 28) }));
-  XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
-  XLSX.utils.book_append_sheet(workbook, recordsSheet, 'Records');
-  return workbook;
+  const escapeXml = (value: unknown) => String(value ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  const columnName = (index: number) => {
+    let name = '';
+    for (let current = index; current > 0; current = Math.floor((current - 1) / 26)) {
+      name = String.fromCharCode(65 + ((current - 1) % 26)) + name;
+    }
+    return name;
+  };
+  const sheetXml = (headers: string[], rows: Record<string, unknown>[]) => {
+    const cells = [headers.map((header) => header), ...rows.map((row) => headers.map((header) => row[header]))];
+    const rowXml = cells.map((row, rowIndex) => `<row r="${rowIndex + 1}">${row.map((value, columnIndex) => {
+      const reference = `${columnName(columnIndex + 1)}${rowIndex + 1}`;
+      const style = rowIndex === 0 ? ' s="1"' : '';
+      return typeof value === 'number' && Number.isFinite(value)
+        ? `<c r="${reference}"${style}><v>${value}</v></c>`
+        : `<c r="${reference}" t="inlineStr"${style}><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`;
+    }).join('')}</row>`).join('');
+    const lastColumn = columnName(headers.length);
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${headers.map((header, index) => `<col min="${index + 1}" max="${index + 1}" width="${Math.min(Math.max(header.length + 2, 12), 28)}" customWidth="1"/>`).join('')}</cols><sheetData>${rowXml}</sheetData><autoFilter ref="A1:${lastColumn}${Math.max(cells.length, 1)}"/></worksheet>`;
+  };
+
+  const files: Record<string, Uint8Array> = {
+    '[Content_Types].xml': strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'),
+    '_rels/.rels': strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'),
+    'xl/workbook.xml': strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Summary" sheetId="1" r:id="rId1"/><sheet name="Records" sheetId="2" r:id="rId2"/></sheets></workbook>'),
+    'xl/_rels/workbook.xml.rels': strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'),
+    'xl/styles.xml': strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0F766E"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'),
+    'xl/worksheets/sheet1.xml': strToU8(sheetXml(Object.keys(summary[0]), summary)),
+    'xl/worksheets/sheet2.xml': strToU8(sheetXml(CSV_HEADERS, records.map((record) => recordToWorkbookRow(record, identity)))),
+  };
+  return zipSync(files, { level: 6 });
 }
 
 export function recordsWorkbookFileName(scope: string, date = new Date()): string {
@@ -190,8 +213,17 @@ export async function downloadRecordsReportXlsx(
   identity: ReportIdentity = {},
   scope = 'records',
 ): Promise<string> {
-  const XLSX = await import('xlsx');
   const fileName = recordsWorkbookFileName(scope);
-  XLSX.writeFile(await buildRecordsWorkbook(records, identity), fileName, { compression: true });
+  const workbook = await buildRecordsWorkbook(records, identity);
+  const blob = new Blob([new Uint8Array(workbook).buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
   return fileName;
 }
