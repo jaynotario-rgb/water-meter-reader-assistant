@@ -40,6 +40,8 @@ The app is designed for meter readers working from a mobile phone, including are
 - Guarded Edit preserves prior values and marks changed records EDITED
 - Guarded VOID replaces destructive deletion and preserves audit evidence
 - Daily Log summarizes active records, consumption, amount, pending readings, and flagged readings
+- Export Center supports All Records, Current Filtered View, or individually selected records
+- Excel exports are real `.xlsx` workbooks with separate Summary and Records sheets
 
 ## Pilot settings and data safety
 
@@ -47,6 +49,7 @@ The app is designed for meter readers working from a mobile phone, including are
 - Saving field identity performs a read-back verification before reporting success
 - Saved identity appears in the app and receipt
 - Export Backup preserves customers, readings, photos, collection state, edit/void audit data, and settings
+- JSON remains the restore-safe backup format; Excel/PDF outputs are documentation reports
 - Restore Backup supports Merge and guarded Replace
 - App displays the `0.1.0-pilot` version and Last Backup status
 

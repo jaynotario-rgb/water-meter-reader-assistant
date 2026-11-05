@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ReadingRecord } from './domain/models';
-import { buildRecordsReportCsv, recordsReportFileName } from './report-export';
+import { buildRecordsReportCsv, buildRecordsWorkbook, recordsReportFileName, recordsWorkbookFileName } from './report-export';
+import { strFromU8, unzipSync } from 'fflate';
 
 const record: ReadingRecord = {
   id: 'record-1',
@@ -41,5 +42,21 @@ describe('daily report CSV', () => {
   it('uses a predictable date-based file name', () => {
     expect(recordsReportFileName('Paid Records', new Date('2026-09-22T12:00:00')))
       .toBe('water-meter-paid-records-2026-09-22.csv');
+  });
+
+  it('creates a real workbook with Summary and Records sheets', async () => {
+    const workbook = await buildRecordsWorkbook([record], {
+      readerName: 'Maria Santos',
+      waterSystemName: 'Barangay Malinis',
+    });
+
+    const files = unzipSync(workbook);
+    expect(Object.keys(files)).toContain('xl/worksheets/sheet1.xml');
+    expect(strFromU8(files['xl/workbook.xml'])).toContain('name="Summary"');
+    expect(strFromU8(files['xl/workbook.xml'])).toContain('name="Records"');
+    expect(strFromU8(files['xl/worksheets/sheet2.xml'])).toContain('Juan, Dela Cruz');
+    expect(strFromU8(files['xl/worksheets/sheet2.xml'])).toContain('&apos;=DANGEROUS()');
+    expect(recordsWorkbookFileName('Selected Records', new Date('2026-09-22T12:00:00')))
+      .toBe('water-meter-selected-records-2026-09-22.xlsx');
   });
 });
