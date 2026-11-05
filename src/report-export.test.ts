@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ReadingRecord } from './domain/models';
 import { buildRecordsReportCsv, buildRecordsWorkbook, recordsReportFileName, recordsWorkbookFileName } from './report-export';
+import { strFromU8, unzipSync } from 'fflate';
 
 const record: ReadingRecord = {
   id: 'record-1',
@@ -49,10 +50,12 @@ describe('daily report CSV', () => {
       waterSystemName: 'Barangay Malinis',
     });
 
-    expect(workbook.SheetNames).toEqual(['Summary', 'Records']);
-    expect(workbook.Sheets.Summary.A2.v).toBe(1);
-    expect(workbook.Sheets.Records.D2.v).toBe('Juan, Dela Cruz');
-    expect(workbook.Sheets.Records.Q2.v).toBe("'=DANGEROUS()");
+    const files = unzipSync(workbook);
+    expect(Object.keys(files)).toContain('xl/worksheets/sheet1.xml');
+    expect(strFromU8(files['xl/workbook.xml'])).toContain('name="Summary"');
+    expect(strFromU8(files['xl/workbook.xml'])).toContain('name="Records"');
+    expect(strFromU8(files['xl/worksheets/sheet2.xml'])).toContain('Juan, Dela Cruz');
+    expect(strFromU8(files['xl/worksheets/sheet2.xml'])).toContain('&apos;=DANGEROUS()');
     expect(recordsWorkbookFileName('Selected Records', new Date('2026-09-22T12:00:00')))
       .toBe('water-meter-selected-records-2026-09-22.xlsx');
   });
