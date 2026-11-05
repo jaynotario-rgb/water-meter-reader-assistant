@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ReadingRecord } from './domain/models';
-import { buildRecordsReportCsv, recordsReportFileName } from './report-export';
+import { buildRecordsReportCsv, buildRecordsWorkbook, recordsReportFileName, recordsWorkbookFileName } from './report-export';
 
 const record: ReadingRecord = {
   id: 'record-1',
@@ -41,5 +41,19 @@ describe('daily report CSV', () => {
   it('uses a predictable date-based file name', () => {
     expect(recordsReportFileName('Paid Records', new Date('2026-09-22T12:00:00')))
       .toBe('water-meter-paid-records-2026-09-22.csv');
+  });
+
+  it('creates a real workbook with Summary and Records sheets', async () => {
+    const workbook = await buildRecordsWorkbook([record], {
+      readerName: 'Maria Santos',
+      waterSystemName: 'Barangay Malinis',
+    });
+
+    expect(workbook.SheetNames).toEqual(['Summary', 'Records']);
+    expect(workbook.Sheets.Summary.A2.v).toBe(1);
+    expect(workbook.Sheets.Records.D2.v).toBe('Juan, Dela Cruz');
+    expect(workbook.Sheets.Records.Q2.v).toBe("'=DANGEROUS()");
+    expect(recordsWorkbookFileName('Selected Records', new Date('2026-09-22T12:00:00')))
+      .toBe('water-meter-selected-records-2026-09-22.xlsx');
   });
 });
