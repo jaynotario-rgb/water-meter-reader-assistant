@@ -1,7 +1,7 @@
 import { db } from './data/db';
 import type { AppSettings, Customer, ReadingRecord } from './domain/models';
 
-export const PILOT_VERSION = '0.1.0-pilot';
+export const PILOT_VERSION = '0.2.0-beta.1';
 
 type BackupRecord = Omit<ReadingRecord, 'meterPhoto'> & {
   meterPhoto?: { type: string; dataUrl: string };
