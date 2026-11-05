@@ -119,3 +119,79 @@ export function downloadRecordsReportCsv(
 export function downloadDailyReportCsv(records: ReadingRecord[], identity: ReportIdentity = {}): string {
   return downloadRecordsReportCsv(records, identity, 'daily-log');
 }
+
+function recordToWorkbookRow(record: ReadingRecord, identity: ReportIdentity) {
+  const captured = localDateParts(record.capturedAt);
+  return {
+    'Record ID': record.id,
+    Date: captured.date,
+    Time: captured.time,
+    'Customer Name': spreadsheetSafe(record.customerName),
+    'Meter Number': spreadsheetSafe(record.meterNumber),
+    'Previous Reading': record.previousReading,
+    'Current Reading': record.currentReading,
+    'Consumption (m3)': record.consumption,
+    'Minimum Charge (PHP)': record.minimumCharge,
+    'Excess Consumption (m3)': record.excessConsumption,
+    'Excess Charge (PHP)': record.excessCharge,
+    'Total (PHP)': record.total,
+    'Reading Status': record.status,
+    'Collection Status': record.paymentStatus ?? 'UNPAID',
+    'Paid At': record.paidAt ? new Date(record.paidAt).toLocaleString('en-PH') : '',
+    'Payment Method': spreadsheetSafe(record.paymentMethod),
+    'Payment Reference / OR': spreadsheetSafe(record.paymentReference),
+    'Payment Remarks': spreadsheetSafe(record.paymentRemarks),
+    'Record State': record.recordState ?? 'ACTIVE',
+    'Audit State': record.voidedAt ? 'VOID' : record.editedAt ? 'EDITED' : 'ORIGINAL',
+    'Edit Reason': spreadsheetSafe(record.editReason),
+    'Void Reason': spreadsheetSafe(record.voidReason),
+    'Photo Available': record.meterPhoto ? 'YES' : 'NO',
+    Notes: spreadsheetSafe(record.notes),
+    'Meter Reader': spreadsheetSafe(identity.readerName),
+    'Water System / Barangay': spreadsheetSafe(identity.waterSystemName),
+  };
+}
+
+export async function buildRecordsWorkbook(records: ReadingRecord[], identity: ReportIdentity = {}) {
+  const XLSX = await import('xlsx');
+  const active = records.filter((record) => (record.recordState ?? 'ACTIVE') === 'ACTIVE');
+  const summary = [{
+    'Exported Records': records.length,
+    'Active Records': active.length,
+    'Paid Records': active.filter((record) => (record.paymentStatus ?? 'UNPAID') === 'PAID').length,
+    'Pending Records': active.filter((record) => (record.paymentStatus ?? 'UNPAID') === 'UNPAID').length,
+    'Void Records': records.length - active.length,
+    'Flagged Records': active.filter((record) => record.status === 'FLAGGED').length,
+    'Total Consumption (m3)': active.reduce((sum, record) => sum + record.consumption, 0),
+    'Total Amount (PHP)': active.reduce((sum, record) => sum + record.total, 0),
+    'Meter Reader': spreadsheetSafe(identity.readerName),
+    'Water System / Barangay': spreadsheetSafe(identity.waterSystemName),
+    'Generated At': new Date().toLocaleString('en-PH'),
+  }];
+
+  const workbook = XLSX.utils.book_new();
+  const recordsSheet = XLSX.utils.json_to_sheet(records.map((record) => recordToWorkbookRow(record, identity)));
+  const summarySheet = XLSX.utils.json_to_sheet(summary);
+  recordsSheet['!freeze'] = { xSplit: 0, ySplit: 1 };
+  recordsSheet['!autofilter'] = { ref: recordsSheet['!ref'] ?? 'A1:A1' };
+  recordsSheet['!cols'] = CSV_HEADERS.map((header) => ({ wch: Math.min(Math.max(header.length + 2, 12), 28) }));
+  summarySheet['!cols'] = Object.keys(summary[0]).map((header) => ({ wch: Math.min(Math.max(header.length + 2, 14), 28) }));
+  XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+  XLSX.utils.book_append_sheet(workbook, recordsSheet, 'Records');
+  return workbook;
+}
+
+export function recordsWorkbookFileName(scope: string, date = new Date()): string {
+  return `water-meter-${fileSafeScope(scope)}-${date.toLocaleDateString('en-CA')}.xlsx`;
+}
+
+export async function downloadRecordsReportXlsx(
+  records: ReadingRecord[],
+  identity: ReportIdentity = {},
+  scope = 'records',
+): Promise<string> {
+  const XLSX = await import('xlsx');
+  const fileName = recordsWorkbookFileName(scope);
+  XLSX.writeFile(await buildRecordsWorkbook(records, identity), fileName, { compression: true });
+  return fileName;
+}
